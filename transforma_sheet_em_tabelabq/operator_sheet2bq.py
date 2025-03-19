@@ -9,10 +9,8 @@ import uuid
 from google.cloud                       import storage,secretmanager,bigquery
 from google.oauth2.service_account      import Credentials
 
-
-PATH_BQ_PROJECT = os.getenv("PATH_BQ_PROJECT")
-PATH_BQ_DATASET = os.getenv("PATH_BQ_DATASET")
-
+# PATH_BQ_PROJECT = os.getenv("PATH_BQ_PROJECT")
+# PATH_BQ_DATASET = os.getenv("PATH_BQ_DATASET")
 
 def echo(texto:str):
     logging.info(texto)
@@ -50,19 +48,64 @@ def pegar_dados_sheets(credenciais:Credentials, sheet_id:str, sheet_name_aba:str
     else:
         worksheet = spreadsheet.worksheet(sheet_name_aba).get(intervalo_celulas)  
         return worksheet
-    
+
+def validarValor(valor, j, i):
+  try:
+      return valor[j][i]
+  except IndexError:
+      return ""
+
 def definicao_schema_table(schema_table:list,valor:list) -> list:
     if schema_table is None:
         return [
-            {valor[0][i]: valor[j][i] for i in range(len(valor[0]))}
+            {valor[0][i]: validarValor(valor,j,i) for i in range(len(valor[0]))}
             for j in range(1, len(valor))
         ]
     else:
         colunas = [item['name'] for item in schema_table]
         return [
-            {colunas[i]: valor[j][i] for i in range(len(valor[0]))}
+            {colunas[i]: validarValor(valor,j,i) for i in range(len(valor[0]))}
             for j in range(1, len(valor))
         ]
+
+def criarTabelaBigQuery(PATH_DADOS_GCS,table_id,schema_table, PATH_BQ_PROJECT, PATH_BQ_DATASET):
+    echo(f"PATH_BQ_PROJECT : {PATH_BQ_PROJECT}")
+    echo(f"PATH_BQ_DATASET : {PATH_BQ_DATASET}")
+    echo(f"PATH_DADOS_GCS : {PATH_DADOS_GCS}")
+    echo(f"table_id : {table_id}")
+    echo(f"schema_table : {schema_table}")
+
+    # Criar o cliente do BigQuery
+    client = bigquery.Client(project=PATH_BQ_PROJECT)
+
+    # Definir a URI do arquivo no GCP Storage (formato: gs://<bucket>/<file>)
+    uri = f'gs://{PATH_DADOS_GCS}'
+
+    # Configurar o job de carregamento
+    if isinstance(schema_table, list):
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,  # Tipo de arquivo JSON
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # Sobrescrever a tabela existente
+            schema=schema_table
+        )
+    else:
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,  # Tipo de arquivo JSON
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # Sobrescrever a tabela existente
+            autodetect=True
+        )
+
+    # Carregar os dados do arquivo JSON no BigQuery
+    load_job = client.load_table_from_uri(
+        uri, f'{PATH_BQ_DATASET}.{table_id}', job_config=job_config
+    )
+
+    # Esperar até que o job seja concluído
+    load_job.result()
+
+    # Verificar se a tabela foi criada com sucesso
+    table = client.get_table(f'{PATH_BQ_DATASET}.{table_id}')
+    return f"{PATH_BQ_PROJECT}.{PATH_BQ_DATASET}.{table_id}"
 
 def passar_dados_para_json_gs(valor:list, bucket_name:str,sheet_id:str,json_filename:str,schema_table:list,sheet_name_aba:str):
     TMP_ARQUIVO = f'/tmp/dados-{str(uuid.uuid4())}.json'
@@ -95,57 +138,21 @@ def passar_dados_para_json_gs(valor:list, bucket_name:str,sheet_id:str,json_file
     echo(f'Arquivo JSON gerado e salvo em gs://{bucket_name}/{PATH_DADOS}')
     return f"{bucket_name}/{PATH_DADOS}"
 
-def criarTabelaBigQuery(PATH_DADOS_GCS,table_id,schema_table):
-    print(f"PATH_BQ_PROJECT : {PATH_BQ_PROJECT}")
-    print(f"PATH_BQ_DATASET : {PATH_BQ_DATASET}")
-    print(f"PATH_DADOS_GCS : {PATH_DADOS_GCS}")
-    print(f"table_id : {table_id}")
-    print(f"schema_table : {schema_table}")
-
-    # Criar o cliente do BigQuery
-    client = bigquery.Client(project=PATH_BQ_PROJECT)
-
-    # Definir a URI do arquivo no GCP Storage (formato: gs://<bucket>/<file>)
-    uri = f'gs://{PATH_DADOS_GCS}'
-
-
-    # Configurar o job de carregamento
-    if isinstance(schema_table, list):
-        job_config = bigquery.LoadJobConfig(
-            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,  # Tipo de arquivo JSON
-            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # Sobrescrever a tabela existente
-            schema=schema_table
-        )
-    else:
-        job_config = bigquery.LoadJobConfig(
-            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,  # Tipo de arquivo JSON
-            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # Sobrescrever a tabela existente
-            autodetect=True
-        )
-
-    # Carregar os dados do arquivo JSON no BigQuery
-    load_job = client.load_table_from_uri(
-        uri, f'{PATH_BQ_DATASET}.{table_id}', job_config=job_config
-    )
-
-    # Esperar até que o job seja concluído
-    load_job.result()
-
-    # Verificar se a tabela foi criada com sucesso
-    table = client.get_table(f'{PATH_BQ_DATASET}.{table_id}')
-    return f"{PATH_BQ_PROJECT}.{PATH_BQ_DATASET}.{table_id}"
-
 def geraDadosParaGCS(secretManagerSheet:str,sheet_id:str,sheet_name_aba:str,intervalo_celulas:str,
-                    bucket_name:str,json_filename:str,schema_table:list,
-                    table_name:str):
+                    bucket_name:str, json_filename:str,
+                    table_name:str, schema_table:list,
+                    PATH_BQ_PROJECT:str, PATH_BQ_DATASET:str
+                ):
     credential = getCredenciais(secretManagerSheet)
     valor = pegar_dados_sheets(credential,sheet_id,sheet_name_aba,intervalo_celulas)
 
     if isinstance(schema_table, list):
-        print("A schema_table é uma lista.")
+        echo("A schema_table é uma lista.")
     else:
-        print("Schema definido como none.")
+        echo("Schema definido como none.")
         schema_table = None
 
-    PATH_DADOS_BUCKET = passar_dados_para_json_gs(valor, bucket_name,sheet_id,json_filename,schema_table,sheet_name_aba)
-    return criarTabelaBigQuery(PATH_DADOS_BUCKET,table_name,schema_table)
+    PATH_DADOS_BUCKET = passar_dados_para_json_gs(valor, 
+                bucket_name,sheet_id,json_filename,
+                schema_table,sheet_name_aba)
+    return criarTabelaBigQuery(PATH_DADOS_BUCKET,table_name,schema_table, PATH_BQ_PROJECT, PATH_BQ_DATASET)
