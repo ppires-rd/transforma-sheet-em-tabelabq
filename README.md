@@ -1,5 +1,7 @@
-# transforma-sheet-em-tabelabq
+# Transformar sheet em tabela do bigquery
 
+
+---
 ## Pré-requisito:
 Sheet: No sheet, será necessário dar permissão view para a service account especifico. 
 
@@ -86,8 +88,8 @@ print(PATH_TABELA)
 
 
 ## Videos 
-
 ### Fazer o build do projeto
-
+https://drive.google.com/file/d/1cfZ1hniv4rLdzQfXhQQrvKO-YcPmGyId/view?usp=drive_link
 
 ### Fazer a integração com o notebook. 
+https://drive.google.com/file/d/1vxMNX3tXMJOWiYTnCz2XDq3GmTtIPyXP/view?usp=drive_link
