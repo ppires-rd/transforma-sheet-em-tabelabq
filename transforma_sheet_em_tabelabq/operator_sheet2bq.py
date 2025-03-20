@@ -84,14 +84,14 @@ def criarTabelaBigQuery(PATH_DADOS_GCS,table_id,schema_table, PATH_BQ_PROJECT, P
     # Configurar o job de carregamento
     if isinstance(schema_table, list):
         job_config = bigquery.LoadJobConfig(
-            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,  # Tipo de arquivo JSON
-            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # Sobrescrever a tabela existente
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             schema=schema_table
         )
     else:
         job_config = bigquery.LoadJobConfig(
-            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,  # Tipo de arquivo JSON
-            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,  # Sobrescrever a tabela existente
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             autodetect=True
         )
 
